@@ -3,13 +3,16 @@ name: Preview
 # publishes it as this repository's Pages project site, which the user site's
 # domain serves under https://www.regetskcob.de/preview/. Started by hand:
 #   gh workflow run preview.yml --repo regetskcob/preview -f ref=<branch>
+# Without a ref the preview is parked: every address under /preview/ sends
+# the visitor to the same page on the live site (job "park").
+#   gh workflow run preview.yml --repo regetskcob/preview
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Branch, tag or commit of regetskcob.github.io
-        required: true
-        default: horizont
+        description: Branch, tag or commit of regetskcob.github.io; empty parks the preview
+        required: false
+        default: ''
 permissions:
   contents: read
   pages: write
@@ -19,6 +22,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
+    if: inputs.ref != ''
     runs-on: ubuntu-latest
     # A first run without the image cache renders every WebP of the blog from
     # scratch and takes far longer than the blog's own cached build.
@@ -77,13 +81,47 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./public
+  # The parked preview: one page, served for every address as index and 404,
+  # that strips /preview from the path and moves on to the live site.
+  # noindex, so search engines drop what they still had of the preview.
+  park:
+    if: inputs.ref == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write the redirect page
+        run: |
+          mkdir -p public
+          cat > public/index.html <<'HTML'
+          <!doctype html>
+          <html lang="de">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <meta name="robots" content="noindex">
+          <title>Vorschau pausiert | regetskcob</title>
+          <meta http-equiv="refresh" content="0; url=https://www.regetskcob.de/">
+          <script>location.replace("https://www.regetskcob.de" + (location.pathname.replace(/^\/preview/, "") || "/") + location.hash)</script>
+          </head>
+          <body>
+          <p>Gerade gibt es keine Vorschau. Weiter zu <a href="https://www.regetskcob.de/">regetskcob.de</a>.</p>
+          </body>
+          </html>
+          HTML
+          cp public/index.html public/404.html
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./public
   deploy:
+    # After whichever of build and park ran; the other one is skipped.
+    if: always() && (needs.build.result == 'success' || needs.park.result == 'success')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: build
+    needs: [build, park]
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

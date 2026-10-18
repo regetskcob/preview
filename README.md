@@ -15,3 +15,12 @@ gh workflow run preview.yml --repo regetskcob/preview -f ref=horizont
 ```
 
 Es gibt immer nur eine Vorschau; der nächste Lauf ersetzt sie.
+
+Ohne `ref` wird die Vorschau geparkt: Jede Adresse unter `/preview/` leitet dann
+auf dieselbe Seite der Live-Seite weiter (`/preview/galerie/` → `/galerie/`), mit
+`noindex`. So bleibt der Weg für den nächsten Branch offen, ohne dass ein alter
+Stand herumsteht.
+
+```sh
+gh workflow run preview.yml --repo regetskcob/preview
+```
